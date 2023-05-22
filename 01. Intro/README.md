@@ -5,7 +5,7 @@
 3. SQL은 어떻게 탄생했나요?
 4. SQL 시스템의 구성 요소는 무엇인가요?
 5. SQL 명령이란 무엇인가요?
-6. SQL 명령어 삽입(SQL Injection)은 무엇인가요?
+6. SQL 명령어 삽입(SQL Injection)은 무엇인가요? 
 7. MySQL이란 무엇입니까?
 8. SQL과 MySQL의 차이는 무엇인가요?
 9. NoSQL이란 무엇인가요?
