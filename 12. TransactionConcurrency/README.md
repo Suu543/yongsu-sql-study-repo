@@ -273,6 +273,8 @@ WHERE customer_id = 1; -- 여기 까지 실행 2
 ROLLBACK;
 ```
 
+이 경우 커밋되지 않은 UPDATE 쿼리를 인식하는 단계의 isolation이기 때문에 쿼리를 transaction a가 끝나지 않은 상태에서 transaction b 가 행한 업데이트가 반영된다. 하지만 transaction a가 처음 transaction을 시작하는 시점의 값을 기준으로 의사 결정을 하는 경우 치명적인 결과를 불러올 수 있기 때문에 조심해야 합니다. 그리고 어떤 이유에서든지 transaction B가 업데이트 내용을 commit 하지 않고 rollback한다면 더 문제는 심각해집니다. 결과적으로 `READ UNCOMMITTED ISOLATION LEVEL`에서는 `Dirty Read`문제가 발생합니다.
+
 ## READ COMMITTED Isolation Level
 
 ```sql
@@ -294,8 +296,11 @@ WHERE customer_id = 1;
 COMMIT; -- 실행 7
 ```
 
-`REPEATABLE READ ISOLATION LEVEL`이 필요한 상황을 구현해보겠습니다.
-다음 시나리오에서는 비일관적으로 데이터를 읽어오기 때문에 더 높은 수준의 `Isolation Level`인 `REPEATABLE READ ISOLATION LEVEL`이 필요합니다.
+`READ COMMITTED ISOLATION LEVEL`을 설정한 경우, `Transaction A`를 먼저 실행하고, `Transaction B`에서 `Transaction A`에서 찾는 고객 정보에 업데이트를 하고 `COMMIT`을 하지 않은 상태에서, 해당 고객을 `Transaction A`에서 조회하는 경우, 업데이트 한 고객 정보가 아닌 이전 정보가 출력됩니다.
+
+이 경우 `Dirty Read` 문제는 발생하지 않지만, `UNREPEATABLE READS` 문제가 발생합니다. 다시 말해서 `TRANSACTION`이 진행되는 동안 같은 값을 두 번 조회할 때 이 값이 일치하지 않는 문제가 발생합니다.
+
+다음 코드를 실행하면 `UNREPEATABLE READS OR INCONSISTENT READS` 문제가 발생합니다. 이 문제를 해결하기 위해서는 `ISOLATION LEVEL`을 `ISOLATION LEVEL REPEATABLE READ` 단계로 설정해야합니다.
 
 ```sql
 USE sql_store; -- 실행 1
@@ -317,7 +322,7 @@ COMMIT; -- 실행 8
 
 ## REPEATABLE READ Isolation Level
 
-MySQL의 기본 `ISOLATION LEVEL`입니다.
+MySQL의 기본 `ISOLATION LEVEL`입니다. 이 단계는 `NONREPEATABLE READ OR INCONSISTENT READ` 문제를 해결해줍니다. 하지만 `PHANTOM READ`가 문제가 될 수 있습니다.
 
 ```sql
 USE sql_store; -- 실행 1
@@ -337,8 +342,8 @@ WHERE customer_id = 1;
 COMMIT; -- 실행 8
 ```
 
-하지만 `Phantom READ` 문제는 여전히 남아있습니다.
-시나리오는 `VA`에 거주하는 모든 고객을 추출하는 과정에, `customer_id = 1`인 고객의 `state = "VA"`로 업데이트 하는 상황입니다.
+`PHANTOM READ` 문제가 발생하도록 코드를 구성해보겠습니다.
+시나리오는 `VA`에 거주하는 모든 고객을 추출하는 과정에, `customer_id = 1`인 고객의 `state = "VA"`로 업데이트 하는 상황입니다. `TRANSACTION A`가 진행되는 시점에 `VA`에 거주하는 사람은 1명입니다. `TRANSACTION A`가 끝나기 전에, `TRANSCTION B`에서 `VA`에 사는 사람을 한 명 업데이트합니다. 그럼에도 `TRANSACTION A`에서 한 번더 `VA`를 조회하면 여전히 한 명의 사람만 출력됩니다. 이후 `TRANSACTION A`를 커밋하고, 다시 조회했을 때 이전에 없었 던, 새로운 `VA` 사는 사람이 출력되고, 이러한 상황을 `PHANTOM READ`라 칭합니다.
 
 ```sql
 USE sql_store;
@@ -363,8 +368,7 @@ COMMIT; -- 실행 6
 
 ## SERIALIZABLE ISOLATION LEVEL
 
-`Phantom READ`, `Lost Updates` 등 어떠한 문제도 이 단계의 `ISOLATION LEVEL`에서는 발생하지 않습니다.
-`ISOLATION LEVEL`은 `PHANTOM READS`를 방지하고 싶은 경우에 사용할 수 있습니다.
+`Phantom READ`, `Lost Updates` 등 어떠한 문제도 이 단계의 `ISOLATION LEVEL`에서는 발생하지 않습니다. 이 단계는 무조건 순서대로 쿼리를 실행합니다. 다음 코드로 예를 들면, `TRANSACTION A`에서 `VA`에 거주하는 사람을 검색하고, 해당 `TRANSACTION`이 끝나기 전에 `TRANSACTION B`에서 `VA`사는 사람을 추가하고 커밋하지 않은 상태에서 `TRANSCTION A`에서 `VA` 거주하는 사람을 다시 검색하면, `Spinner`가 출력되면서 현재 업데이트 하는 `TRANSCTION B`의 커밋을 기다리고, `B`가 커밋을 했을 때 로딩이 풀리고 정상적으로 업데이트 된 `VA` 거주하는 사람을 포함해 결과를 확인할 수 있습니다. 이 방식으로 `PHANTOM READS`를 방지할 수 있습니다. 단 이 방식은 컴퓨팅 파워가 많이 소모되기 때문에 분명한 이유가 없는 한 사용을 권장하지 않습니다.
 
 ```sql
 USE sql_store;
